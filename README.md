@@ -251,7 +251,7 @@ CELERY_WORKER_CONCURRENCY = 1    # 单进程模式
 
 ## 许可证
 
-MIT
+Apache2
 
 ## 贡献
 
