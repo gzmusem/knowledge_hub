@@ -1,0 +1,35 @@
+# Python 虚拟环境
+venv/
+env/
+.env/
+.venv/
+ENV/
+*.pyc
+__pycache__/
+.Python
+pip-log.txt
+.env
+
+# IDE 相关
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Python 包相关
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+bin/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+
+# 日志文件
+*.log
