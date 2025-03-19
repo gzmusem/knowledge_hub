@@ -3,6 +3,7 @@ import MainLayout from '@/components/layout/MainLayout.vue'
 import HomeView from '../views/HomeView.vue'
 import ChatView from '../views/ChatView.vue'
 import requestControl from '@/utils/requestControl';
+import TokenUsage from '@/views/model/TokenUsage.vue';
 
 // 导入组件
 const ModelConfig = () => import('@/views/model/ModelConfig.vue');
@@ -10,7 +11,6 @@ const ProviderList = () => import('@/views/model/ProviderList.vue');
 const ProviderForm = () => import('@/views/model/ProviderForm.vue');
 const ModelList = () => import('@/views/model/ModelList.vue');
 const ModelForm = () => import('@/views/model/ModelForm.vue');
-const TokenUsage = () => import('@/views/model/TokenUsage.vue');
 
 const routes = [
   {
@@ -115,10 +115,9 @@ const routes = [
         path: 'model-config/usage',
         name: 'TokenUsage',
         component: TokenUsage,
-        meta: { 
-          title: 'Token使用统计', 
+        meta: {
           requiresAuth: true,
-          adminOnly: true
+          title: 'Token使用统计'
         }
       }
     ]
