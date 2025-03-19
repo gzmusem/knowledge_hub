@@ -2,53 +2,57 @@
     <div class="chat-window">
       <!-- 消息列表区域 -->
       <div class="messages-container" ref="messagesContainer">
-        <div v-if="!uniqueMessages || uniqueMessages.length === 0" class="empty-state">
-          <div class="empty-icon">
-            <i class="el-icon-chat-dot-round"></i>
-          </div>
-          <div class="empty-text">开始一个新对话吧</div>
-          <div class="debug-info" style="font-size:12px;color:#999;margin-top:10px;">
-            会话ID: {{ props.conversationId }}<br>
-            消息数: {{ messages.value ? messages.value.length : 0 }}<br>
-            Store消息数: {{ chatStore.currentMessages ? chatStore.currentMessages.length : 0 }}<br>
-            临时消息数: {{ tempMessages.value ? tempMessages.value.length : 0 }}
-          </div>
-        </div>
-        
-        <div 
-          v-for="message in uniqueMessages" 
-          :key="message.id"
-          :class="['message-wrapper', message.role]"
-        >
-          <!-- 用户消息 -->
-          <div v-if="message.role === 'user'" class="user-message">
-            <div class="avatar user-avatar">
-              <span>用户</span>
+        <!-- 确保所有消息在同一个容器内顺序显示 -->
+        <div class="messages-wrapper">
+          <div v-if="!uniqueMessages || uniqueMessages.length === 0" class="empty-state">
+            <div class="empty-icon">
+              <i class="el-icon-chat-dot-round"></i>
             </div>
-            <div class="message-content">
-              <div class="message-text">{{ message.content }}</div>
+            <div class="empty-text">开始一个新对话吧</div>
+            <div class="debug-info" style="font-size:12px;color:#999;margin-top:10px;">
+              会话ID: {{ props.conversationId }}<br>
+              消息数: {{ messages.value ? messages.value.length : 0 }}<br>
+              Store消息数: {{ chatStore.currentMessages ? chatStore.currentMessages.length : 0 }}<br>
+              临时消息数: {{ tempMessages.value ? tempMessages.value.length : 0 }}
             </div>
           </div>
-
-          <!-- AI回答 -->
-          <div v-else-if="message.role === 'assistant'" class="assistant-message">
-            <div class="avatar assistant-avatar">
-              <span>AI</span>
-            </div>
-            <div class="message-content">
-              <!-- 正在加载的消息显示动画效果 -->
-              <div v-if="message.isLoading" class="message-text loading">
-                <div class="thinking-dots">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </div>
-                <div>正在思考，请稍候...</div>
+          
+          <!-- 遍历所有消息并确保它们正确地一个接一个显示 -->
+          <div 
+            v-for="(message, index) in uniqueMessages" 
+            :key="message.id || `temp-${index}`"
+            :class="['message-item', message.role]"
+          >
+            <!-- 用户消息 -->
+            <div v-if="message.role === 'user'" class="user-message">
+              <div class="message-content">
+                <div class="message-text">{{ message.content }}</div>
               </div>
-              <!-- 使用v-html渲染Markdown内容 -->
-              <div v-else class="message-text markdown-content" v-html="renderMarkdown(message.content)"></div>
-              <div class="model-info" v-if="message.metadata?.model_id || selectedModel">
-                {{ getModelName(message.metadata?.model_id || selectedModel) }}
+              <div class="avatar user-avatar">
+                <span>用户</span>
+              </div>
+            </div>
+
+            <!-- AI回答 -->
+            <div v-else-if="message.role === 'assistant'" class="assistant-message">
+              <div class="avatar assistant-avatar">
+                <span>AI</span>
+              </div>
+              <div class="message-content">
+                <!-- 正在加载的消息显示动画效果 -->
+                <div v-if="message.isLoading" class="message-text loading">
+                  <div class="thinking-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                  <div>正在思考，请稍候...</div>
+                </div>
+                <!-- 使用v-html渲染Markdown内容 -->
+                <div v-else class="message-text markdown-content" v-html="renderMarkdown(message.content)"></div>
+                <div class="model-info" v-if="message.metadata?.model_id || selectedModel">
+                  {{ getModelName(message.metadata?.model_id || selectedModel) }}
+                </div>
               </div>
             </div>
           </div>
@@ -128,43 +132,45 @@
   
   // 合并正式消息和临时消息以供显示
   const displayMessages = computed(() => {
-    // 合并store中的消息和临时消息
-    const storeMessages = chatStore.currentMessages || [];
-    return [...storeMessages, ...tempMessages.value];
+    // 获取store中的消息
+    const storeMessages = Array.isArray(messages.value) ? messages.value : [];
+    // 获取临时消息
+    const tempMsgs = Array.isArray(tempMessages.value) ? tempMessages.value : [];
+    
+    console.log('[DEBUG] Store消息数:', storeMessages.length);
+    console.log('[DEBUG] 临时消息数:', tempMsgs.length);
+    
+    // 合并消息并返回
+    return [...storeMessages, ...tempMsgs];
   });
   
   // 计算属性：去除重复消息
   const uniqueMessages = computed(() => {
-    // 先检查是否使用临时消息
-    if (tempMessages.value && tempMessages.value.length > 0) {
-      return tempMessages.value;
-    }
+    // 使用 displayMessages 而不是 messages.value
+    const allMessages = displayMessages.value;
     
-    // 然后检查chatStore中的消息
-    if (Array.isArray(chatStore.currentMessages) && chatStore.currentMessages.length > 0) {
-      return chatStore.currentMessages;
-    }
-    
-    // 最后尝试使用本地messages变量
-    if (!Array.isArray(messages.value)) {
+    if (!Array.isArray(allMessages)) {
       return [];
     }
     
     // 过滤掉无效消息
-    const validMessages = messages.value.filter(msg => msg && (msg.content || msg.role));
+    const validMessages = allMessages.filter(msg => msg && (msg.content || msg.role || msg.isLoading));
     
     // 使用Map去重
     const uniqueMap = new Map();
     validMessages.forEach(msg => {
-      const key = msg.id || `${msg.role}-${msg.content}`;
+      const key = msg.id || msg.tempId || `${msg.role}-${msg.content}`;
       if (!uniqueMap.has(key)) {
         uniqueMap.set(key, msg);
       }
     });
     
-    // 转回数组并排序
+    // 转回数组并确保按时间戳排序
     return Array.from(uniqueMap.values()).sort((a, b) => {
-      return new Date(a.timestamp || 0) - new Date(b.timestamp || 0);
+      // 确保时间戳比较不会出错
+      const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return timeA - timeB;
     });
   });
   
@@ -290,6 +296,12 @@
         : [];
       
       console.log(`[ChatWindow] 加载了 ${messages.value.length} 条消息`);
+      
+      console.log(`[ChatWindow] 消息加载完成，共 ${messages.value.length} 条消息，ID列表:`, 
+        messages.value.map(m => m.id));
+      
+      // 强制触发视图更新
+      messages.value = [...messages.value];
     } catch (error) {
       console.error('[ChatWindow] 加载消息失败:', error);
       
@@ -333,35 +345,34 @@
       tempMessages.value = [];
     }
     
-    // 生成临时ID
-    const tempUserMsgId = `temp-user-${Date.now()}`;
-    const tempAssistantMsgId = `temp-assistant-${Date.now()}`;
+    // 创建临时用户消息
+    const userMessage = {
+      tempId: `temp-user-${Date.now()}`,
+      role: 'user',
+      content: currentContent,
+      timestamp: new Date().toISOString()
+    };
+    
+    // 创建临时AI思考消息
+    const thinkingMessage = {
+      tempId: `temp-assistant-${Date.now()}`,
+      role: 'assistant',
+      isLoading: true,
+      content: '正在思考中...',
+      timestamp: new Date().toISOString()
+    };
+    
+    // 添加临时消息
+    tempMessages.value = [...tempMessages.value, userMessage, thinkingMessage];
+    
+    console.log('[DEBUG] 添加临时消息后数量:', tempMessages.value.length);
+    
+    // 强制更新视图
+    await nextTick();
+    scrollToBottom();
     
     try {
       console.log('[DEBUG] 发送单条消息:', currentContent);
-      
-      // 显示临时用户消息
-      tempMessages.value.push({
-        tempId: tempUserMsgId,
-        role: 'user',
-        content: currentContent,
-        timestamp: new Date().toISOString()
-      });
-      
-      // 显示加载中的AI消息
-      tempMessages.value.push({
-        tempId: tempAssistantMsgId,
-        role: 'assistant',
-        isLoading: true,
-        content: '',
-        timestamp: new Date().toISOString()
-      });
-      
-      // 滚动到底部
-      await nextTick();
-      if (messagesContainer.value) {
-        messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
-      }
       
       // 发送到服务器
       const sendingContent = currentContent;
@@ -380,13 +391,15 @@
         sendingModel
       );
       
-      // 确保临时消息数组仍然是数组
-      if (!Array.isArray(tempMessages.value)) {
-        tempMessages.value = [];
-      } else {
-        // 清除临时消息
-        tempMessages.value = [];
-      }
+      // 发送成功后，清除临时消息
+      tempMessages.value = [];
+      
+      // 确保加载完整的消息列表
+      await loadMessages();
+      
+      // 确保视图更新和滚动到底部
+      await nextTick();
+      scrollToBottom();
       
       console.log('[DEBUG] API响应:', apiResponse);
       
@@ -429,16 +442,12 @@
       console.error('[ERROR] 发送消息失败:', error);
       ElMessage.error('发送消息失败，请稍后重试');
       
-      // 确保tempMessages是数组
-      if (!Array.isArray(tempMessages.value)) {
-        tempMessages.value = [];
-      }
-      
-      // 添加错误提示
+      // 错误处理：保留用户消息，显示错误提示
+      tempMessages.value = tempMessages.value.filter(msg => msg.role === 'user');
       tempMessages.value.push({
         tempId: `error-${Date.now()}`,
         role: 'assistant',
-        content: '消息发送失败，请重试或检查网络连接。',
+        content: '消息发送失败，请重试',
         isError: true,
         timestamp: new Date().toISOString()
       });
@@ -492,8 +501,20 @@
     overflow-y: auto;
     padding: 16px;
     min-height: 200px;
-    background-color: #f0f2f5;
-    border-bottom: 1px solid #e0e3e9;
+    display: flex;
+    flex-direction: column; /* 确保消息是垂直堆叠的 */
+  }
+  
+  .messages-wrapper {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 16px; /* 消息之间的间距 */
+  }
+  
+  .message-item {
+    width: 100%;
+    margin-bottom: 16px;
   }
   
   .empty-state {
@@ -525,6 +546,7 @@
     display: flex;
     flex-direction: row-reverse;
     align-items: flex-start;
+    width: 100%;
   }
   
   .user-message .message-content {
@@ -545,6 +567,7 @@
   .assistant-message {
     display: flex;
     align-items: flex-start;
+    width: 100%;
   }
   
   .assistant-message .message-content {
@@ -734,5 +757,68 @@
     padding: 1em;
     border-radius: 5px;
     overflow-x: auto;
+  }
+
+  /* 添加思考状态的动画样式 */
+  .thinking {
+    display: flex;
+    align-items: center;
+    color: #666;
+  }
+
+  .dot-animation {
+    display: flex;
+    align-items: center;
+  }
+
+  .dot-animation::after {
+    content: '...';
+    animation: dots 1.5s steps(4, end) infinite;
+    width: 1.5em;
+    display: inline-block;
+  }
+
+  @keyframes dots {
+    0%, 20% { content: ''; }
+    40% { content: '.'; }
+    60% { content: '..'; }
+    80%, 100% { content: '...'; }
+  }
+
+  /* 消息样式优化 */
+  .message {
+    display: flex;
+    margin-bottom: 20px;
+    align-items: flex-start;
+  }
+
+  .message.user {
+    flex-direction: row-reverse;
+  }
+
+  .avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 10px;
+    background: #f0f2f5;
+  }
+
+  .content {
+    max-width: 70%;
+    padding: 12px 16px;
+    border-radius: 12px;
+    background: #f0f2f5;
+  }
+
+  .message.user .content {
+    background: #e3f2fd;
+  }
+
+  .message.assistant .content {
+    background: #f5f5f5;
   }
   </style>
