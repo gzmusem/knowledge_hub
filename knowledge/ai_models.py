@@ -3,6 +3,8 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from knowledge.models import Conversation, Message
+from django.conf import settings
+from django.core.exceptions import ValidationError
 
 User = get_user_model()
 
@@ -120,3 +122,163 @@ class TokenUsage(models.Model):
         
     def __str__(self):
         return f"{self.user.username} - {self.model.name} - {self.request_time}"
+
+class PromptScene(models.Model):
+    """提示词场景"""
+    name = models.CharField(max_length=50, verbose_name="场景名称")
+    code = models.CharField(
+        max_length=50, 
+        unique=True, 
+        verbose_name="场景代码",
+        help_text="场景的唯一标识符，如：code_review"
+    )
+    description = models.TextField(
+        blank=True, 
+        verbose_name="场景描述"
+    )
+    icon = models.CharField(
+        max_length=50, 
+        blank=True,
+        verbose_name="场景图标",
+        help_text="可选的图标标识"
+    )
+    order = models.IntegerField(
+        default=0, 
+        verbose_name="排序",
+        help_text="数字越小越靠前"
+    )
+    is_active = models.BooleanField(
+        default=True, 
+        verbose_name="是否启用"
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True, 
+        verbose_name="创建时间"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True, 
+        verbose_name="更新时间"
+    )
+
+    class Meta:
+        verbose_name = "提示词场景"
+        verbose_name_plural = "提示词场景"
+        ordering = ['order', 'created_at']
+
+    def __str__(self):
+        return self.name
+
+class PromptTemplate(models.Model):
+    """提示词模板"""
+    name = models.CharField(max_length=100, verbose_name="模板名称")
+    description = models.TextField(blank=True, verbose_name="模板描述")
+    content = models.TextField(verbose_name="模板内容")
+    
+    # 添加场景分类
+    SCENE_TYPES = (
+        ('general', '通用'),
+        ('code_review', '代码审查'),
+        ('document', '文档生成'),
+        ('translation', '翻译助手'),
+        ('qa', '问答系统'),
+        # 可以根据需要添加更多场景
+    )
+    scene = models.ForeignKey(
+        PromptScene,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='templates',
+        verbose_name="所属场景"
+    )
+    
+    TEMPLATE_TYPES = (
+        ('system', '系统提示词'),
+        ('user', '用户提示词'),
+    )
+    template_type = models.CharField(
+        max_length=20, 
+        choices=TEMPLATE_TYPES, 
+        default='user',
+        verbose_name="模板类型"
+    )
+    
+    # 关联系统提示词（只有用户提示词可以关联系统提示词）
+    system_prompt = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        limit_choices_to={'template_type': 'system'},
+        related_name='user_prompts',
+        verbose_name="关联的系统提示词"
+    )
+    
+    # 关联AI模型
+    model = models.ForeignKey(
+        AIModel,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        verbose_name="关联模型"
+    )
+    
+    variables = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="变量定义",
+        help_text="定义模板中使用的变量，格式：{'变量名': '变量说明'}"
+    )
+    
+    # 添加示例值字段
+    example_values = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="变量示例值",
+        help_text="变量的示例值，格式：{'变量名': '示例值'}"
+    )
+    
+    is_public = models.BooleanField(default=True, verbose_name="是否公开")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        verbose_name="创建者"
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+    
+    class Meta:
+        verbose_name = "提示词模板"
+        verbose_name_plural = "提示词模板"
+        ordering = ['-created_at']
+        
+    def clean(self):
+        """模型验证"""
+        super().clean()
+        # 系统提示词不能关联系统提示词
+        if self.template_type == 'system' and self.system_prompt:
+            raise ValidationError('系统提示词不能关联系统提示词')
+        
+        # 验证变量定义和示例值的对应关系
+        if self.variables and self.example_values:
+            if not all(key in self.variables for key in self.example_values):
+                raise ValidationError('示例值中包含未定义的变量')
+    
+    def save(self, *args, **kwargs):
+        """保存前进行验证"""
+        self.clean()
+        super().save(*args, **kwargs)
+
+    @property
+    def full_content(self):
+        """获取完整的提示词内容（包含系统提示词）"""
+        if self.template_type == 'user' and self.system_prompt:
+            return {
+                'system_prompt': self.system_prompt.content,
+                'user_prompt': self.content
+            }
+        return {
+            'system_prompt': None,
+            'user_prompt': self.content
+        }

@@ -1,6 +1,6 @@
 <template>
   <div class="chat-view" :key="key">
-    <div v-if="isDebugMode" style="position: fixed; top: 5px; right: 10px; background: #f0f0f0; padding: 5px; font-size: 12px; z-index: 9999;">
+    <div v-if="isDebugMode" class="debug-info">
       路径: {{ route.path }} <br>
       ID: {{ conversationId }} <br>
       传递ID: {{ route.path === '/chat/new' ? 'null' : conversationId }}
@@ -30,13 +30,16 @@
 import { ref, computed, onMounted, watch, nextTick, onUnmounted, watchEffect, onBeforeUnmount, provide } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useChatStore } from '@/stores/chat';
+import { usePromptStore } from '@/stores/prompt';
 import ChatWindow from '@/components/chat/ChatWindow.vue';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import requestControl from '@/utils/requestControl';
+import { ArrowDown } from '@element-plus/icons-vue';
 
 const route = useRoute();
 const router = useRouter();
 const chatStore = useChatStore();
+const promptStore = usePromptStore();
 
 const conversationId = ref(null);
 const conversation = ref(null);
@@ -48,6 +51,9 @@ const loadCompleted = ref(false);
 
 // 添加这个变量替代process.env检查
 const isDebugMode = false; // 开发时可以设为true
+
+// 添加消息相关的状态
+const messageContent = ref('');
 
 // 监听路由变化
 watch(() => route.params.id, (newId) => {
@@ -105,9 +111,14 @@ onBeforeUnmount(() => {
 provide('conversationId', conversationId);
 
 // 只有在组件挂载时加载一次
-onMounted(() => {
-  // 只执行一次loadConversation，避免重复请求
-  loadConversation();
+onMounted(async () => {
+  try {
+    await promptStore.fetchTemplates();
+    await loadConversation();
+  } catch (error) {
+    console.error('初始化失败:', error);
+    ElMessage.error('加载数据失败');
+  }
 });
 
 // 添加日志到标题计算属性
@@ -171,6 +182,25 @@ watch(() => route.params.id, () => {
 onUnmounted(() => {
   loadCompleted.value = false;
 });
+
+// 添加发送消息的方法
+const sendMessage = async () => {
+  if (!messageContent.value.trim()) return;
+  
+  try {
+    // 调用子组件的发送方法
+    if (chatWindowRef.value) {
+      await chatWindowRef.value.sendMessage({
+        content: messageContent.value,
+        model_id: selectedModel
+      });
+      messageContent.value = ''; // 清空输入框
+    }
+  } catch (error) {
+    console.error('发送消息失败:', error);
+    ElMessage.error('发送消息失败');
+  }
+};
 </script>
 
 <style scoped>
@@ -180,11 +210,22 @@ onUnmounted(() => {
   flex-direction: column;
 }
 
+.debug-info {
+  position: fixed;
+  top: 5px;
+  right: 10px;
+  background: #f0f0f0;
+  padding: 5px;
+  font-size: 12px;
+  z-index: 9999;
+}
+
 .chat-header {
+  padding: 16px;
+  border-bottom: 1px solid #ebeef5;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
 }
 
 .chat-header h2 {

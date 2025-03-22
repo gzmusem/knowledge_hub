@@ -73,6 +73,19 @@ export const useModelStore = defineStore('models', {
       this.preferredModel = modelId;
       // 保存到本地存储
       localStorage.setItem('preferredModel', modelId);
+    },
+
+    async updateModelStatus(modelId, isActive) {
+      try {
+        await apiService.models.updateStatus(modelId, isActive);
+        const model = this.availableModels.find(m => m.model_id === modelId);
+        if (model) {
+          model.is_active = isActive;
+        }
+      } catch (error) {
+        console.error('[Store] 更新模型状态失败:', error);
+        throw error;
+      }
     }
   },
   

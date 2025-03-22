@@ -4,7 +4,7 @@ import apiService from '@/api/api';
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     user: null,
-    token: localStorage.getItem('token') || null,
+    token: localStorage.getItem('token'),
     loading: false,
     error: null
   }),
@@ -108,10 +108,43 @@ export const useAuthStore = defineStore('auth', {
     },
     
     async checkAuth() {
-      if (this.token && !this.user) {
-        return await this.fetchUserProfile();
+      try {
+        // 如果没有token，直接返回false
+        if (!this.token) {
+          console.log('没有token，验证失败');
+          return false;
+        }
+        
+        console.log('正在验证token...');
+        // 使用 getUser 方法来验证token
+        const response = await apiService.auth.getUser();
+        
+        // 确保后端返回了用户信息
+        if (response.data) {
+          this.user = response.data;
+          console.log('Token有效，用户已登录:', this.user);
+          return true;
+        } else {
+          console.log('没有获取到用户信息');
+          this.clearAuth();
+          return false;
+        }
+      } catch (error) {
+        console.error('Token验证失败:', error);
+        this.clearAuth();
+        return false;
       }
-      return this.user;
+    },
+
+    setToken(token) {
+      this.token = token;
+      localStorage.setItem('token', token);
+    },
+
+    clearAuth() {
+      this.user = null;
+      this.token = null;
+      localStorage.removeItem('token');
     }
   }
 });

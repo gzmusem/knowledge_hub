@@ -1,58 +1,94 @@
 <template>
   <div class="model-list">
-    <div class="page-header">
-      <h3>AI模型管理</h3>
-      <el-button type="primary" @click="$router.push('/model-config/models/add')">
+    <div class="header">
+      <h2>AI模型管理</h2>
+      <el-button 
+        link
+        :icon="Plus"
+        @click="$router.push('/model-config/models/add')"
+      >
         添加模型
       </el-button>
     </div>
-    
+
     <el-table 
-      :data="models" 
-      border 
-      style="width: 100%"
+      :data="modelConfigStore.models"
       v-loading="loading"
+      style="width: 100%"
     >
-      <el-table-column prop="name" label="模型名称" width="180" />
-      <el-table-column prop="model_id" label="模型ID" width="150" />
-      <el-table-column prop="provider.name" label="提供商" width="150" />
-      <el-table-column prop="model_type" label="类型" width="100">
-        <template #default="scope">
-          <el-tag>{{ getModelTypeName(scope.row.model_type) }}</el-tag>
+      <el-table-column
+        prop="name"
+        label="模型名称"
+        min-width="150"
+      />
+      <el-table-column
+        prop="model_id"
+        label="模型ID"
+        min-width="150"
+      />
+      <el-table-column
+        prop="provider_name"
+        label="提供商"
+        min-width="120"
+      >
+        <template #default="{ row }">
+          {{ row.provider_name || '-' }}
         </template>
       </el-table-column>
-      <el-table-column prop="is_default" label="默认" width="80">
-        <template #default="scope">
-          <el-tag v-if="scope.row.is_default" type="success">默认</el-tag>
-          <el-button 
-            v-else 
-            size="small" 
-            type="text"
-            @click="setAsDefault(scope.row)"
-          >
-            设为默认
-          </el-button>
+      <el-table-column
+        prop="type"
+        label="类型"
+        min-width="100"
+      >
+        <template #default="{ row }">
+          <el-tag>对话模型</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="is_active" label="状态" width="80">
-        <template #default="scope">
-          <el-tag :type="scope.row.is_active ? 'success' : 'danger'">
-            {{ scope.row.is_active ? '启用' : '禁用' }}
+      <el-table-column
+        label="默认"
+        width="80"
+      >
+        <template #default="{ row }">
+          <el-switch
+            v-model="row.is_default"
+            disabled
+          />
+        </template>
+      </el-table-column>
+      <el-table-column
+        label="状态"
+        width="100"
+      >
+        <template #default="{ row }">
+          <el-tag :type="row.is_active ? 'success' : 'info'">
+            {{ row.is_active ? '已启用' : '已禁用' }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200">
-        <template #default="scope">
-          <el-button 
-            size="small" 
-            @click="$router.push(`/model-config/models/edit/${scope.row.id}`)"
+      <el-table-column
+        label="操作"
+        width="250"
+        fixed="right"
+      >
+        <template #default="{ row }">
+          <el-button
+            link
+            type="primary"
+            @click="handleToggleStatus(row)"
+          >
+            {{ row.is_active ? '禁用' : '启用' }}
+          </el-button>
+          <el-button
+            link
+            type="primary"
+            @click="$router.push(`/model-config/models/edit/${row.id}`)"
           >
             编辑
           </el-button>
-          <el-button 
-            size="small" 
-            type="danger" 
-            @click="handleDelete(scope.row)"
+          <el-button
+            link
+            type="danger"
+            @click="handleDelete(row)"
           >
             删除
           </el-button>
@@ -64,105 +100,91 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import { ElMessageBox, ElMessage } from 'element-plus';
 import { useModelConfigStore } from '@/stores/modelConfig';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import { Plus } from '@element-plus/icons-vue';
 
 const modelConfigStore = useModelConfigStore();
-const models = ref([]);
 const loading = ref(false);
 
-// 模型类型映射
-const modelTypes = {
-  'chat': '对话模型',
-  'text': '文本生成',
-  'embedding': '向量嵌入',
-  'image': '图像生成',
-  'audio': '语音处理'
-};
-
-// 获取模型类型名称
-const getModelTypeName = (type) => {
-  return modelTypes[type] || type;
-};
-
-// 加载模型列表
-const loadModels = async () => {
-  loading.value = true;
+// 获取模型列表
+const fetchModels = async () => {
   try {
-    models.value = await modelConfigStore.fetchModels();
-  } catch (error) {
-    ElMessage.error('加载模型列表失败');
-  } finally {
-    loading.value = false;
-  }
-};
-
-// 设置为默认模型
-const setAsDefault = async (model) => {
-  try {
-    await ElMessageBox.confirm(
-      `确定要将 "${model.name}" 设置为默认模型吗？`,
-      '提示',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'info'
-      }
-    );
-    
     loading.value = true;
-    await modelConfigStore.setDefaultModel(model.id);
-    ElMessage.success('默认模型设置成功');
-    await loadModels();
+    await modelConfigStore.fetchModels();
   } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('设置默认模型失败');
-    }
+    console.error('[ModelList] 获取模型列表失败:', error);
+    ElMessage.error('获取模型列表失败');
   } finally {
     loading.value = false;
   }
 };
 
-// 删除模型
+// 处理删除
 const handleDelete = async (model) => {
   try {
     await ElMessageBox.confirm(
-      `确定要删除模型 "${model.name}" 吗？`,
-      '警告',
+      `确定要删除模型 ${model.name} 吗？`,
+      '删除确认',
       {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
-        type: 'warning'
+        type: 'warning',
       }
     );
     
-    loading.value = true;
     await modelConfigStore.deleteModel(model.id);
-    ElMessage.success('模型删除成功');
-    await loadModels();
+    ElMessage.success('删除成功');
+    await fetchModels();
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('删除模型失败');
+      console.error('[ModelList] 删除模型失败:', error);
+      ElMessage.error('删除失败');
     }
-  } finally {
-    loading.value = false;
+  }
+};
+
+// 处理启用/禁用
+const handleToggleStatus = async (model) => {
+  try {
+    const action = model.is_active ? '禁用' : '启用';
+    console.log('[ModelList] 切换模型状态:', model.id, !model.is_active);
+    
+    // 先获取完整的模型数据
+    const currentModel = await modelConfigStore.getModel(model.id);
+    
+    // 只更新 is_active 字段
+    const updatedData = {
+      ...currentModel,
+      is_active: !model.is_active
+    };
+    
+    await modelConfigStore.updateModel(model.id, updatedData);
+    ElMessage.success(`${action}成功`);
+  } catch (error) {
+    console.error('[ModelList] 更新模型状态失败:', error);
+    ElMessage.error(`${action}失败`);
   }
 };
 
 onMounted(() => {
-  loadModels();
+  fetchModels();
 });
 </script>
 
 <style scoped>
 .model-list {
-  width: 100%;
+  padding: 20px;
 }
 
-.page-header {
+.header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
+}
+
+.header h2 {
+  margin: 0;
 }
 </style> 

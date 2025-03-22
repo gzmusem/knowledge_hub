@@ -9,8 +9,8 @@ from django.utils import timezone
 import datetime
 from rest_framework import serializers
 
-from knowledge.ai_models import ModelProvider, AIModel, TokenUsage
-from knowledge.serializers_model import ModelProviderSerializer, AIModelSerializer, TokenUsageSerializer, ModelStatSerializer
+from knowledge.ai_models import ModelProvider, AIModel, TokenUsage, PromptTemplate, PromptScene
+from knowledge.serializers_model import ModelProviderSerializer, AIModelSerializer, TokenUsageSerializer, ModelStatSerializer, PromptTemplateSerializer, PromptSceneSerializer
 
 class ModelProviderViewSet(viewsets.ModelViewSet):
     """模型提供商管理"""
@@ -266,3 +266,98 @@ class TokenUsageViewSet(viewsets.ReadOnlyModelViewSet):
         
         serializer.is_valid()  # 验证数据
         return Response(serializer.data)
+
+class PromptTemplateViewSet(viewsets.ModelViewSet):
+    """提示词模板管理"""
+    queryset = PromptTemplate.objects.all()
+    serializer_class = PromptTemplateSerializer
+    permission_classes = [permissions.IsAdminUser]
+    
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+    
+    def perform_update(self, serializer):
+        serializer.save()
+    
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
+    def available(self, request):
+        """获取可用的提示词模板列表"""
+        templates = PromptTemplate.objects.filter(is_public=True)
+        if not request.user.is_staff:
+            # 非管理员只能看到公开的和自己创建的模板
+            templates = templates | PromptTemplate.objects.filter(created_by=request.user)
+        
+        serializer = self.get_serializer(templates.distinct(), many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def duplicate(self, request, pk=None):
+        """复制模板"""
+        template = self.get_object()
+        new_template = PromptTemplate.objects.create(
+            name=f"{template.name} (复制)",
+            description=template.description,
+            content=template.content,
+            template_type=template.template_type,
+            model=template.model,
+            variables=template.variables,
+            is_public=False,  # 复制的模板默认设为私有
+            created_by=request.user
+        )
+        serializer = self.get_serializer(new_template)
+        return Response(serializer.data)
+
+class PromptSceneViewSet(viewsets.ModelViewSet):
+    """提示词场景视图集"""
+    queryset = PromptScene.objects.all()
+    serializer_class = PromptSceneSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        """根据操作类型设置权限"""
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [permissions.IsAdminUser()]
+        return super().get_permissions()
+
+    def get_queryset(self):
+        """根据请求类型过滤查询集"""
+        queryset = super().get_queryset()
+        if self.action == 'list' and not self.request.user.is_staff:
+            return queryset.filter(is_active=True)
+        return queryset
+
+    @action(detail=True, methods=['get'])
+    def templates(self, request, pk=None):
+        """获取场景下的所有模板"""
+        scene = self.get_object()
+        templates = scene.templates.all()
+        
+        # 非管理员只能看到公开的模板
+        if not request.user.is_staff:
+            templates = templates.filter(is_public=True)
+            
+        serializer = PromptTemplateSerializer(templates, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def reorder(self, request, pk=None):
+        """更新场景排序"""
+        if not request.user.is_staff:
+            return Response(
+                {"detail": "只有管理员可以更改排序"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+            
+        scene = self.get_object()
+        new_order = request.data.get('order')
+        
+        if new_order is None:
+            return Response(
+                {"detail": "请提供新的排序值"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        scene.order = new_order
+        scene.save()
+        
+        return Response(PromptSceneSerializer(scene).data)

@@ -4,13 +4,35 @@
 
 <script setup>
 import { onMounted } from 'vue';
-import { useAuthStore } from './stores/auth';
+import { useAuthStore } from '@/stores/auth';
+import { useRouter } from 'vue-router';
 
 const authStore = useAuthStore();
+const router = useRouter();
 
+// 在应用启动时执行身份验证检查
 onMounted(async () => {
-  // 应用启动时检查认证状态
-  await authStore.checkAuth();
+  // 如果localStorage中有token，则验证其有效性
+  if (localStorage.getItem('token')) {
+    try {
+      // 调用checkAuth验证token
+      const isValid = await authStore.checkAuth();
+      
+      console.log('Token验证结果:', isValid);
+      
+      // 如果token无效，并且不在登录页，则重定向到登录页
+      if (!isValid && router.currentRoute.value.path !== '/login') {
+        router.push('/login');
+      }
+    } catch (error) {
+      console.error('验证token时出错:', error);
+      // 出错时也清除token并重定向
+      authStore.clearAuth();
+      if (router.currentRoute.value.path !== '/login') {
+        router.push('/login');
+      }
+    }
+  }
 });
 </script>
 

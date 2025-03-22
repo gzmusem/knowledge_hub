@@ -1,96 +1,211 @@
 <template>
     <div class="chat-window">
-      <!-- 消息列表区域 -->
-      <div class="messages-container" ref="messagesContainer">
-        <!-- 确保所有消息在同一个容器内顺序显示 -->
-        <div class="messages-wrapper">
-          <div v-if="!uniqueMessages || uniqueMessages.length === 0" class="empty-state">
-            <div class="empty-icon">
-              <i class="el-icon-chat-dot-round"></i>
-            </div>
-            <div class="empty-text">开始一个新对话吧</div>
-            <div class="debug-info" style="font-size:12px;color:#999;margin-top:10px;">
-              会话ID: {{ props.conversationId }}<br>
-              消息数: {{ messages.value ? messages.value.length : 0 }}<br>
-              Store消息数: {{ chatStore.currentMessages ? chatStore.currentMessages.length : 0 }}<br>
-              临时消息数: {{ tempMessages.value ? tempMessages.value.length : 0 }}
+      <div class="main-content">
+        <!-- 左侧聊天区域 -->
+        <div class="chat-area">
+          <!-- 消息列表区域 -->
+          <div class="messages-container" ref="messagesContainer">
+            <!-- 确保所有消息在同一个容器内顺序显示 -->
+            <div class="messages-wrapper">
+              <div v-if="!uniqueMessages || uniqueMessages.length === 0" class="empty-state">
+                <div class="empty-icon">
+                  <i class="el-icon-chat-dot-round"></i>
+                </div>
+                <div class="empty-text">开始一个新对话吧</div>
+                <div class="debug-info" style="font-size:12px;color:#999;margin-top:10px;">
+                  会话ID: {{ props.conversationId }}<br>
+                  消息数: {{ messages.value ? messages.value.length : 0 }}<br>
+                  Store消息数: {{ chatStore.currentMessages ? chatStore.currentMessages.length : 0 }}<br>
+                  临时消息数: {{ tempMessages.value ? tempMessages.value.length : 0 }}
+                </div>
+              </div>
+              
+              <!-- 遍历所有消息并确保它们正确地一个接一个显示 -->
+              <div 
+                v-for="(message, index) in uniqueMessages" 
+                :key="message.id || `temp-${index}`"
+                :class="['message-item', message.role]"
+              >
+                <!-- 用户消息 -->
+                <div v-if="message.role === 'user'" class="user-message">
+                  <div class="message-content">
+                    <div class="message-text">{{ message.content }}</div>
+                  </div>
+                  <div class="avatar user-avatar">
+                    <span>用户</span>
+                  </div>
+                </div>
+
+                <!-- AI回答 -->
+                <div v-else-if="message.role === 'assistant'" class="assistant-message">
+                  <div class="avatar assistant-avatar">
+                    <span>AI</span>
+                  </div>
+                  <div class="message-content">
+                    <!-- 正在加载的消息显示动画效果 -->
+                    <div v-if="message.isLoading" class="message-text loading">
+                      <div class="thinking-dots">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                      </div>
+                      <div>正在思考，请稍候...</div>
+                    </div>
+                    <!-- 使用v-html渲染Markdown内容 -->
+                    <div v-else class="message-text markdown-content" v-html="renderMarkdown(message.content)"></div>
+                    <div class="model-info" v-if="message.metadata?.model_id || selectedModel">
+                      {{ getModelName(message.metadata?.model_id || selectedModel) }}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
           
-          <!-- 遍历所有消息并确保它们正确地一个接一个显示 -->
-          <div 
-            v-for="(message, index) in uniqueMessages" 
-            :key="message.id || `temp-${index}`"
-            :class="['message-item', message.role]"
-          >
-            <!-- 用户消息 -->
-            <div v-if="message.role === 'user'" class="user-message">
-              <div class="message-content">
-                <div class="message-text">{{ message.content }}</div>
-              </div>
-              <div class="avatar user-avatar">
-                <span>用户</span>
-              </div>
+          <!-- 左侧输入区域 -->
+          <div class="input-area">
+            <div class="model-selector">
+              <el-select v-model="selectedModel" size="small">
+                <el-option
+                  v-for="model in availableModels"
+                  :key="model.model_id"
+                  :label="model.name"
+                  :value="model.model_id"
+                />
+              </el-select>
             </div>
 
-            <!-- AI回答 -->
-            <div v-else-if="message.role === 'assistant'" class="assistant-message">
-              <div class="avatar assistant-avatar">
-                <span>AI</span>
-              </div>
-              <div class="message-content">
-                <!-- 正在加载的消息显示动画效果 -->
-                <div v-if="message.isLoading" class="message-text loading">
-                  <div class="thinking-dots">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                  </div>
-                  <div>正在思考，请稍候...</div>
-                </div>
-                <!-- 使用v-html渲染Markdown内容 -->
-                <div v-else class="message-text markdown-content" v-html="renderMarkdown(message.content)"></div>
-                <div class="model-info" v-if="message.metadata?.model_id || selectedModel">
-                  {{ getModelName(message.metadata?.model_id || selectedModel) }}
-                </div>
-              </div>
+            <!-- 用户输入框 -->
+            <div class="input-container">
+              <el-input
+                v-model="userInput"
+                type="textarea"
+                :rows="3"
+                placeholder="输入您的具体内容..."
+                :disabled="sendingLock"
+                @keydown.enter.prevent
+                @keydown.ctrl.enter="handleSend"
+              />
+              <el-button 
+                type="primary" 
+                @click="handleSend"
+                :loading="sendingLock"
+                :disabled="!canSend">
+                {{ sendingLock ? '发送中...' : '发送' }}
+              </el-button>
             </div>
           </div>
         </div>
-      </div>
-      
-      <!-- 底部输入区域 -->
-      <div class="input-area">
-        <!-- 模型选择 -->
-        <div class="model-selector">
-          <el-select v-model="selectedModel" size="small">
-            <el-option
-              v-for="model in availableModels"
-              :key="model.model_id"
-              :label="model.name"
-              :value="model.model_id"
-            />
-          </el-select>
-        </div>
 
-        <!-- 输入框和发送按钮 -->
-        <div class="input-container">
-          <el-input
-            v-model="message"
-            type="textarea"
-            :rows="3"
-            placeholder="输入您的问题..."
-            :disabled="sendingLock"
-            @keydown.enter.prevent
-            @keydown.ctrl.enter="sendMessage"
-          />
-          <el-button 
-            type="primary" 
-            @click="sendMessage"
-            :loading="sendingLock"
-            :disabled="!message.trim() || sendingLock">
-            {{ sendingLock ? '发送中...' : '发送' }}
-          </el-button>
+        <!-- 右侧提示词面板 -->
+        <div class="prompt-panel">
+          <div class="panel-header">
+            <h3>提示词模板</h3>
+          </div>
+          
+          <!-- 场景选择 -->
+          <div class="scene-section">
+            <div class="section-title">选择场景</div>
+            <el-select 
+              v-model="selectedScene"
+              placeholder="选择场景"
+              @change="handleSceneChange"
+              class="scene-select"
+              :loading="promptStore.loading"
+            >
+              <el-option
+                v-for="scene in promptStore.scenes"
+                :key="scene.id"
+                :label="scene.name"
+                :value="scene.id"
+              />
+            </el-select>
+          </div>
+
+          <!-- 模板列表 -->
+          <div class="templates-section">
+            <div class="section-title">
+              可用模板
+              <small v-if="!selectedScene" class="hint-text">请先选择场景</small>
+            </div>
+            <div class="templates-list" v-loading="promptStore.loading">
+              <el-empty v-if="!filteredTemplates.length" description="暂无可用模板" />
+              <el-card
+                v-for="template in filteredTemplates"
+                :key="template.id"
+                class="template-card"
+                @click="handleTemplateSelect(template)"
+                :class="{ 
+                  'has-system-prompt': template.system_prompt,
+                  'active': selectedTemplate?.id === template.id 
+                }"
+              >
+                <div class="template-name">{{ template.name }}</div>
+                <div class="template-description">{{ template.description }}</div>
+                <el-tag 
+                  v-if="template.system_prompt" 
+                  size="small" 
+                  type="success"
+                  class="system-prompt-tag"
+                >
+                  包含系统提示词
+                </el-tag>
+              </el-card>
+            </div>
+          </div>
+
+          <!-- 模板预览部分 -->
+          <div class="template-preview">
+            <div class="preview-header">
+              <span class="preview-title">模板预览</span>
+              <div class="preview-actions">
+                <el-button 
+                  type="primary" 
+                  link 
+                  size="small"
+                  @click="clearTemplate"
+                  v-if="selectedTemplate"
+                >
+                  清除选择
+                </el-button>
+              </div>
+            </div>
+            
+            <!-- 修改预览文本框 -->
+            <el-input
+              v-if="selectedTemplate"
+              v-model="previewContent"
+              type="textarea"
+              :rows="6"
+              resize="vertical"
+              :placeholder="selectedTemplate?.content || '选择模板后在这里显示模板内容'"
+              class="preview-textarea"
+            />
+            <el-input
+              v-else
+              type="textarea"
+              :rows="6"
+              placeholder="选择模板后在这里显示模板内容"
+              readonly
+              disabled
+              class="preview-textarea"
+            />
+
+            <!-- 变量说明部分 -->
+            <div class="variable-hints" v-if="templateVariables.length">
+              <div class="hints-title">变量说明：</div>
+              <div class="variable-tags">
+                <el-tag 
+                  v-for="variable in templateVariables" 
+                  :key="variable"
+                  class="variable-tag"
+                  @click="insertVariable(variable)"
+                >
+                  {{ variable }}
+                </el-tag>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -106,6 +221,9 @@
   import DOMPurify from 'dompurify';
   import requestControl from '@/utils/requestControl';
   import { useRouter } from 'vue-router';
+  import { usePromptStore } from '@/stores/prompt';
+  import { ArrowDown, InfoFilled } from '@element-plus/icons-vue';
+  import { useAuthStore } from '@/stores/auth';
   
   const props = defineProps({
     conversationId: {
@@ -116,7 +234,8 @@
   
   const chatStore = useChatStore();
   const modelStore = useModelStore();
-  const message = ref('');
+  const userInput = ref(''); // 用户输入内容
+  const selectedTemplate = ref(null); // 当前选中的模板
   const loading = ref(false);
   const messagesContainer = ref(null);
   const selectedModel = ref('');
@@ -329,66 +448,61 @@
   const router = useRouter();
   
   // 2. 修改sendMessage函数
-  const sendMessage = async () => {
-    // 确保 message 是字符串且不为空
-    const currentContent = String(message.value || '').trim();
-    if (!currentContent || sendingLock.value) return;
-    
-    // 记录当前正在发送的消息内容和时间
-    messageBeingSent.value = currentContent;
-    lastSentTimestamp = Date.now();
-    sendingLock.value = true;
-    message.value = ''; // 立即清空输入框
-    
-    // 确保tempMessages是一个数组
-    if (!Array.isArray(tempMessages.value)) {
-      tempMessages.value = [];
-    }
-    
-    // 创建临时用户消息
-    const userMessage = {
-      tempId: `temp-user-${Date.now()}`,
-      role: 'user',
-      content: currentContent,
-      timestamp: new Date().toISOString()
-    };
-    
-    // 创建临时AI思考消息
-    const thinkingMessage = {
-      tempId: `temp-assistant-${Date.now()}`,
-      role: 'assistant',
-      isLoading: true,
-      content: '正在思考中...',
-      timestamp: new Date().toISOString()
-    };
-    
-    // 添加临时消息
-    tempMessages.value = [...tempMessages.value, userMessage, thinkingMessage];
-    
-    console.log('[DEBUG] 添加临时消息后数量:', tempMessages.value.length);
-    
-    // 强制更新视图
-    await nextTick();
-    scrollToBottom();
+  const sendMessage = async (content) => {
+    if (!content.trim() || sendingLock.value) return;
     
     try {
-      console.log('[DEBUG] 发送单条消息:', currentContent);
+      sendingLock.value = true;
+      
+      const messageData = {
+        content: content,
+        model_id: selectedModel.value,
+        system_prompt: currentSystemPrompt.value // 添加系统提示词
+      };
+      
+      // 记录当前正在发送的消息内容和时间
+      messageBeingSent.value = content;
+      lastSentTimestamp = Date.now();
+      
+      // 确保tempMessages是一个数组
+      if (!Array.isArray(tempMessages.value)) {
+        tempMessages.value = [];
+      }
+      
+      // 创建临时用户消息
+      const userMessage = {
+        tempId: `temp-user-${Date.now()}`,
+        role: 'user',
+        content: content,
+        timestamp: new Date().toISOString()
+      };
+      
+      // 创建临时AI思考消息
+      const thinkingMessage = {
+        tempId: `temp-assistant-${Date.now()}`,
+        role: 'assistant',
+        isLoading: true,
+        content: '正在思考中...',
+        timestamp: new Date().toISOString()
+      };
+      
+      // 添加临时消息
+      tempMessages.value = [...tempMessages.value, userMessage, thinkingMessage];
+      
+      console.log('[DEBUG] 添加临时消息后数量:', tempMessages.value.length);
+      
+      // 强制更新视图
+      await nextTick();
+      scrollToBottom();
+      
+      console.log('[DEBUG] 发送单条消息:', messageData);
       
       // 发送到服务器
-      const sendingContent = currentContent;
-      const sendingId = props.conversationId;
-      const sendingModel = selectedModel.value;
-      
-      console.log('[DEBUG] 实际发送参数:', {
-        conversationId: sendingId,
-        content: sendingContent,
-        model_id: sendingModel
-      });
-      
       const apiResponse = await chatStore.sendMessage(
-        sendingContent,
-        sendingId,
-        sendingModel
+        messageData.content,
+        props.conversationId,
+        messageData.model_id,
+        messageData.system_prompt
       );
       
       // 发送成功后，清除临时消息
@@ -455,7 +569,7 @@
       // 延迟重置发送状态
       setTimeout(() => {
         sendingLock.value = false;
-        if (messageBeingSent.value === currentContent) {
+        if (messageBeingSent.value === userInput.value) {
           messageBeingSent.value = '';
         }
       }, 2000); // 设置更长的锁定时间
@@ -486,216 +600,377 @@
   defineExpose({
     updateOnIdChange: loadMessages
   });
+
+  const promptStore = usePromptStore();
+
+  const selectedScene = ref(null);
+  const currentSystemPrompt = ref(null);
+
+  const authStore = useAuthStore();
+
+  // 修改场景变化处理函数
+  const handleSceneChange = async (sceneId) => {
+    try {
+      // 检查认证状态
+      if (!authStore.isAuthenticated) {
+        ElMessage.error('请先登录');
+        router.push('/login');
+        return;
+      }
+
+      selectedScene.value = sceneId;
+      userInput.value = '';
+      currentSystemPrompt.value = null;
+      selectedTemplate.value = null;
+      
+      if (sceneId) {
+        await promptStore.fetchTemplates(sceneId);
+        console.log('场景模板加载成功:', promptStore.templates);
+      } else {
+        promptStore.templates = [];
+      }
+    } catch (error) {
+      console.error('获取场景模板失败:', error);
+      if (error.response?.status === 401) {
+        ElMessage.error('登录已过期，请重新登录');
+        router.push('/login');
+      } else {
+        ElMessage.error('获取场景模板失败');
+      }
+      promptStore.templates = [];
+    }
+  };
+
+  // 修改计算属性
+  const filteredTemplates = computed(() => {
+    if (!selectedScene.value) return [];
+    // 确保返回数组
+    return (promptStore.templates || []).filter(t => 
+      t.scene === selectedScene.value && 
+      t.template_type === 'user'
+    );
+  });
+
+  // 修改计算属性，添加空值判断
+  const templateVariables = computed(() => {
+    if (!selectedTemplate.value?.content) return [];
+    const matches = selectedTemplate.value.content.match(/\{([^}]+)\}/g);
+    return matches ? matches.map(m => m.replace(/[{}]/g, '')) : [];
+  });
+
+  // 判断是否可以发送
+  const canSend = computed(() => {
+    return (userInput.value.trim() && selectedTemplate.value) || 
+           (!selectedTemplate.value && userInput.value.trim());
+  });
+
+  // 修改模板选择处理函数
+  const handleTemplateSelect = (template) => {
+    if (!template) {
+      selectedTemplate.value = null;
+      currentSystemPrompt.value = null;
+      return;
+    }
+    
+    selectedTemplate.value = template;
+    
+    // 如果模板有关联的系统提示词，获取系统提示词内容
+    if (template.system_prompt) {
+      const systemTemplate = promptStore.templates.find(t => t.id === template.system_prompt);
+      if (systemTemplate) {
+        currentSystemPrompt.value = systemTemplate.content;
+      }
+    }
+  };
+
+  // 清除选中的模板
+  const clearTemplate = () => {
+    selectedTemplate.value = null;
+    currentSystemPrompt.value = null;
+  };
+
+  // 添加预览内容的响应式变量
+  const previewContent = ref('');
+
+  // 监听选中模板的变化
+  watch(() => selectedTemplate.value, (newTemplate) => {
+    if (newTemplate) {
+      previewContent.value = newTemplate.content;
+    } else {
+      previewContent.value = '';
+    }
+  });
+
+  // 添加插入变量的方法
+  const insertVariable = (variable) => {
+    const textarea = document.querySelector('.preview-textarea textarea');
+    if (textarea) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const text = previewContent.value;
+      const before = text.substring(0, start);
+      const after = text.substring(end);
+      previewContent.value = `${before}{${variable}}${after}`;
+      
+      // 设置光标位置
+      nextTick(() => {
+        textarea.focus();
+        const newCursorPos = start + variable.length + 2;
+        textarea.setSelectionRange(newCursorPos, newCursorPos);
+      });
+    }
+  };
+
+  // 修改发送逻辑，使用预览内容
+  const handleSend = async () => {
+    if (!canSend.value || sendingLock.value) return;
+
+    try {
+      let finalContent = userInput.value;
+
+      // 如果有预览内容，使用预览内容作为模板
+      if (previewContent.value) {
+        finalContent = previewContent.value;
+        // 替换模板中的变量
+        templateVariables.value.forEach(variable => {
+          finalContent = finalContent.replace(`{${variable}}`, userInput.value);
+        });
+      }
+
+      // 发送消息
+      await sendMessage(finalContent);
+      
+      // 发送成功后清空输入
+      userInput.value = '';
+      
+    } catch (error) {
+      console.error('发送失败:', error);
+      ElMessage.error('发送失败，请重试');
+    }
+  };
+
+  // 在组件挂载时检查认证状态
+  onMounted(async () => {
+    try {
+      // 检查认证状态
+      if (!authStore.isAuthenticated) {
+        await authStore.checkAuth();
+      }
+
+      console.log('开始加载场景和模板数据');
+      await Promise.all([
+        loadModels(),
+        promptStore.fetchScenes(),
+        promptStore.fetchTemplates()
+      ]);
+      
+    } catch (error) {
+      console.error('初始化失败:', error);
+      if (error.response?.status === 401) {
+        ElMessage.error('请先登录');
+        router.push('/login');
+      } else {
+        ElMessage.error('加载数据失败');
+      }
+    }
+  });
+
+  // 可以添加一些新的计算属性或方法
+  const hasSystemPrompt = computed(() => {
+    return (template) => Boolean(template.system_prompt);
+  });
   </script>
   
   <style scoped>
   .chat-window {
-    display: flex;
-    flex-direction: column;
     height: 100%;
     background-color: #f5f7fa;
   }
-  
+
+  .main-content {
+    display: flex;
+    height: 100%;
+  }
+
+  /* 左侧聊天区域样式 */
+  .chat-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid #e4e7ed;
+    background-color: #fff;
+  }
+
   .messages-container {
     flex: 1;
     overflow-y: auto;
-    padding: 16px;
-    min-height: 200px;
-    display: flex;
-    flex-direction: column; /* 确保消息是垂直堆叠的 */
+    padding: 15px;
+    background-color: #f5f7fa;
   }
-  
+
   .messages-wrapper {
-    width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 16px; /* 消息之间的间距 */
+    gap: 20px;
   }
-  
+
+  /* 消息项样式 */
   .message-item {
-    width: 100%;
-    margin-bottom: 16px;
-  }
-  
-  .empty-state {
     display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    color: #909399;
+    margin-bottom: 20px;
+    max-width: 95%;
   }
-  
-  .empty-icon {
-    font-size: 48px;
-    margin-bottom: 16px;
-  }
-  
-  .empty-text {
-    font-size: 16px;
-  }
-  
-  .message-wrapper {
-    margin-bottom: 16px;
-    display: flex;
-    flex-direction: column;
-  }
-  
+
   /* 用户消息样式 */
+  .message-item.user {
+    margin-left: auto; /* 靠右对齐 */
+    flex-direction: row-reverse;
+  }
+
   .user-message {
     display: flex;
     flex-direction: row-reverse;
     align-items: flex-start;
-    width: 100%;
+    gap: 8px;
   }
-  
+
   .user-message .message-content {
-    margin-right: 12px;
-    max-width: 80%;
-  }
-  
-  .user-message .message-text {
-    background-color: #95ec69;
-    color: #000;
+    background-color: #95ec69 !important; /* 使用!important确保优先级 */
+    color: var(--el-text-color-primary);
     border-radius: 16px 4px 16px 16px;
-    padding: 10px 14px;
-    position: relative;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    padding: 10px 12px;
+    box-shadow: var(--el-box-shadow-lighter);
   }
-  
-  /* AI回答样式 */
+
+  /* AI消息样式 */
+  .message-item.assistant {
+    margin-right: auto; /* 靠左对齐 */
+  }
+
   .assistant-message {
     display: flex;
     align-items: flex-start;
-    width: 100%;
+    gap: 8px;
   }
-  
+
   .assistant-message .message-content {
-    margin-left: 12px;
-    max-width: 80%;
-  }
-  
-  .assistant-message .message-text {
-    background-color: #fff;
-    color: #333;
+    background-color: #ffffff !important; /* 使用!important确保优先级 */
+    color: var(--el-text-color-primary);
     border-radius: 4px 16px 16px 16px;
-    padding: 10px 14px;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    padding: 10px 12px;
+    box-shadow: var(--el-box-shadow-lighter);
   }
-  
-  /* 模型标签样式 */
-  .model-info {
-    font-size: 12px;
-    color: #999;
-    margin-top: 4px;
-    padding-left: 4px;
-  }
-  
+
   /* 头像样式 */
   .avatar {
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 14px;
-    color: white;
+    font-size: var(--el-font-size-base);
+    flex-shrink: 0;
   }
-  
+
   .user-avatar {
-    background-color: #007fff;
+    background-color: #409eff !important; /* 使用!important确保优先级 */
+    color: #ffffff;
   }
-  
+
   .assistant-avatar {
-    background-color: #6b7280;
+    background-color: #67c23a !important; /* 使用!important确保优先级 */
+    color: #ffffff;
   }
-  
-  /* 底部输入区域 */
-  .input-area {
-    padding: 16px;
-    background-color: #ffffff;
-    border-top: 1px solid #ebeef5;
+
+  /* 消息内容样式 */
+  .message-content {
+    position: relative;
+    word-break: break-word;
+    min-width: 100px;
+    max-width: calc(100% - 45px);
   }
-  
-  .model-selector {
-    margin-bottom: 12px;
+
+  .message-text {
+    font-size: var(--el-font-size-base);
+    line-height: var(--el-font-line-height-primary);
   }
-  
-  .model-selector .el-select {
-    width: 100%;
+
+  /* 模型信息样式 */
+  .model-info {
+    font-size: 12px;
+    color: #999;
+    margin-top: 4px;
+    text-align: right;
   }
-  
-  .input-container {
-    display: flex;
-    align-items: flex-end;
-  }
-  
-  .input-container .el-textarea {
-    flex: 1;
-    margin-right: 8px;
-  }
-  
-  .input-container .el-button {
-    height: 40px;
-  }
-  
-  /* 添加加载中动画样式 */
-  .loading {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
-  
+
+  /* 加载动画样式 */
   .thinking-dots {
     display: flex;
-    align-items: center;
     gap: 4px;
+    padding: 8px 0;
   }
-  
+
   .thinking-dots span {
-    display: inline-block;
     width: 8px;
     height: 8px;
+    background-color: #999;
     border-radius: 50%;
-    background-color: #666;
     animation: thinking 1.4s infinite ease-in-out both;
   }
-  
-  .thinking-dots span:nth-child(1) {
-    animation-delay: 0s;
-  }
-  
-  .thinking-dots span:nth-child(2) {
-    animation-delay: 0.2s;
-  }
-  
-  .thinking-dots span:nth-child(3) {
-    animation-delay: 0.4s;
-  }
-  
+
+  .thinking-dots span:nth-child(1) { animation-delay: -0.32s; }
+  .thinking-dots span:nth-child(2) { animation-delay: -0.16s; }
+
   @keyframes thinking {
-    0%, 80%, 100% {
+    0%, 80%, 100% { 
       transform: scale(0.6);
-      opacity: 0.6;
+      opacity: 0.4;
     }
-    40% {
+    40% { 
       transform: scale(1);
       opacity: 1;
     }
   }
-  
-  /* 错误消息样式 */
-  .message-text.error {
-    background-color: #fef0f0;
-    color: #f56c6c;
-    border: 1px solid #fbc4c4;
-  }
 
-  /* 添加Markdown内容样式 */
+  /* Markdown 内容样式 */
   .markdown-content {
     line-height: 1.6;
+  }
+
+  .markdown-content :deep(p) {
+    margin: 0.5em 0;
+  }
+
+  .markdown-content :deep(pre) {
+    background-color: #f8f9fa;
+    padding: 12px;
+    border-radius: 4px;
+    overflow-x: auto;
+  }
+
+  .markdown-content :deep(code) {
+    font-family: monospace;
+    background-color: #f0f0f0;
+    padding: 2px 4px;
+    border-radius: 3px;
+  }
+
+  .markdown-content :deep(ul),
+  .markdown-content :deep(ol) {
+    padding-left: 1.5em;
+    margin: 0.5em 0;
+  }
+
+  .markdown-content :deep(li) {
+    margin: 0.3em 0;
+  }
+
+  .markdown-content :deep(blockquote) {
+    border-left: 4px solid #ddd;
+    padding-left: 1em;
+    margin: 0.5em 0;
+    color: #666;
   }
 
   .markdown-content :deep(h1),
@@ -714,20 +989,6 @@
     color: #333;
   }
 
-  .markdown-content :deep(p) {
-    margin: 0.5em 0;
-  }
-
-  .markdown-content :deep(ul),
-  .markdown-content :deep(ol) {
-    padding-left: 1.5em;
-    margin: 0.5em 0;
-  }
-
-  .markdown-content :deep(li) {
-    margin: 0.3em 0;
-  }
-
   .markdown-content :deep(strong) {
     font-weight: 600;
   }
@@ -738,51 +999,125 @@
     margin: 1em 0;
   }
 
-  .markdown-content :deep(blockquote) {
-    border-left: 4px solid #ddd;
-    padding-left: 1em;
-    margin: 0.5em 0;
-    color: #666;
+  .input-area {
+    padding: 16px;
+    border-top: 1px solid #e4e7ed;
+    background-color: #fff;
   }
 
-  .markdown-content :deep(code) {
-    background-color: #f5f5f5;
-    padding: 0.2em 0.4em;
-    border-radius: 3px;
-    font-family: monospace;
+  .model-selector {
+    margin-bottom: 12px;
   }
 
-  .markdown-content :deep(pre) {
-    background-color: #f5f5f5;
-    padding: 1em;
-    border-radius: 5px;
-    overflow-x: auto;
+  .model-selector :deep(.el-select) {
+    width: 100%;
   }
 
-  /* 添加思考状态的动画样式 */
-  .thinking {
+  .input-container {
     display: flex;
-    align-items: center;
-    color: #666;
+    gap: 8px;
   }
 
-  .dot-animation {
+  .input-container .el-textarea {
+    flex: 1;
+  }
+
+  /* 右侧提示词面板样式 */
+  .prompt-panel {
+    width: 300px;
     display: flex;
+    flex-direction: column;
+    background-color: #fff;
+    border-left: 1px solid #e4e7ed;
+  }
+
+  .panel-header {
+    padding: 16px;
+    border-bottom: 1px solid #e4e7ed;
+  }
+
+  .panel-header h3 {
+    margin: 0;
+    font-size: 16px;
+    color: #303133;
+  }
+
+  .scene-section {
+    padding: 16px;
+    border-bottom: 1px solid #e4e7ed;
+  }
+
+  .section-title {
+    margin-bottom: 12px;
+    font-size: 14px;
+    color: #606266;
+    display: flex;
+    justify-content: space-between;
     align-items: center;
   }
 
-  .dot-animation::after {
-    content: '...';
-    animation: dots 1.5s steps(4, end) infinite;
-    width: 1.5em;
-    display: inline-block;
+  .hint-text {
+    color: #909399;
+    font-size: 12px;
   }
 
-  @keyframes dots {
-    0%, 20% { content: ''; }
-    40% { content: '.'; }
-    60% { content: '..'; }
-    80%, 100% { content: '...'; }
+  .scene-select {
+    width: 100%;
+  }
+
+  .templates-section {
+    flex: 1;
+    padding: 16px;
+    overflow-y: auto;
+  }
+
+  .templates-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .template-card {
+    cursor: pointer;
+    transition: all 0.3s;
+    position: relative;
+    padding: 12px;
+  }
+
+  .template-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 2px 12px 0 rgba(0,0,0,0.1);
+  }
+
+  .template-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: #303133;
+    margin-bottom: 4px;
+  }
+
+  .template-description {
+    font-size: 12px;
+    color: #909399;
+    margin-bottom: 4px;
+  }
+
+  .system-prompt-tag {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    font-size: 10px;
+  }
+
+  .has-system-prompt {
+    border: 1px solid #67c23a;
+  }
+
+  /* 错误消息样式 */
+  .message-text.error {
+    background-color: #fef0f0;
+    color: #f56c6c;
+    border: 1px solid #fbc4c4;
   }
 
   /* 消息样式优化 */
@@ -820,5 +1155,107 @@
 
   .message.assistant .content {
     background: #f5f5f5;
+  }
+
+  /* 确保下拉菜单样式正确 */
+  :deep(.el-dropdown-menu) {
+    max-height: 400px;
+    overflow-y: auto;
+  }
+
+  :deep(.el-dropdown-menu__item) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  :deep(.el-dropdown-menu__item .el-icon) {
+    margin-left: 8px;
+    color: #909399;
+  }
+
+  .template-preview {
+    padding: 20px;
+    border-top: 1px solid #e4e7ed;
+    background-color: #f8f9fa;
+    height: auto;
+    min-height: 300px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .preview-title {
+    font-size: 16px;
+    font-weight: 500;
+    color: #303133;
+  }
+
+  .preview-textarea {
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .preview-textarea :deep(.el-textarea__inner) {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 12px;
+    min-height: 200px;
+    background-color: #fff;
+  }
+
+  .variable-hints {
+    margin-top: 16px;
+  }
+
+  .hints-title {
+    font-size: 14px;
+    color: #606266;
+    margin-bottom: 8px;
+    font-weight: 500;
+  }
+
+  .variable-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .variable-tag {
+    cursor: pointer;
+    padding: 6px 12px;
+    font-size: 13px;
+    transition: all 0.3s;
+  }
+
+  .variable-tag:hover {
+    background-color: #409eff;
+    color: #fff;
+    transform: translateY(-1px);
+  }
+
+  /* 确保文本框在暗色主题下也清晰可见 */
+  .preview-textarea :deep(.el-textarea__inner) {
+    color: #303133;
+    background-color: #ffffff;
+    border: 1px solid #dcdfe6;
+  }
+
+  /* 添加文本框hover效果 */
+  .preview-textarea :deep(.el-textarea__inner):hover {
+    border-color: #c0c4cc;
+  }
+
+  /* 添加文本框focus效果 */
+  .preview-textarea :deep(.el-textarea__inner):focus {
+    border-color: #409eff;
   }
   </style>

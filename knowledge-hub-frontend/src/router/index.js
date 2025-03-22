@@ -11,6 +11,9 @@ const ProviderList = () => import('@/views/model/ProviderList.vue');
 const ProviderForm = () => import('@/views/model/ProviderForm.vue');
 const ModelList = () => import('@/views/model/ModelList.vue');
 const ModelForm = () => import('@/views/model/ModelForm.vue');
+const PromptList = () => import('@/views/prompt/PromptList.vue');
+const PromptForm = () => import('@/views/prompt/PromptForm.vue');
+const SceneList = () => import('@/views/prompt/SceneList.vue');
 
 const routes = [
   {
@@ -118,6 +121,46 @@ const routes = [
         meta: {
           requiresAuth: true,
           title: 'Token使用统计'
+        }
+      },
+      {
+        path: 'prompts',
+        name: 'PromptList',
+        component: PromptList,
+        meta: {
+          title: '提示词模板',
+          requiresAuth: true,
+          adminOnly: true
+        }
+      },
+      {
+        path: 'prompts/add',
+        name: 'AddPrompt',
+        component: PromptForm,
+        meta: {
+          title: '添加提示词模板',
+          requiresAuth: true,
+          adminOnly: true
+        }
+      },
+      {
+        path: 'prompts/edit/:id',
+        name: 'EditPrompt',
+        component: PromptForm,
+        meta: {
+          title: '编辑提示词模板',
+          requiresAuth: true,
+          adminOnly: true
+        }
+      },
+      {
+        path: 'model-config/scenes',
+        name: 'SceneList',
+        component: SceneList,
+        meta: { 
+          title: '场景管理', 
+          requiresAuth: true,
+          adminOnly: true
         }
       }
     ]

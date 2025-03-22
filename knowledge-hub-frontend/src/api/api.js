@@ -56,7 +56,8 @@ const apiService = {
     getUser: () => api.get('/api/auth/user/'),
     register: (userData) => api.post('/api/auth/register/', userData),
     getProfile: () => api.get('/api/auth/profile/'),
-    updateProfile: (data) => api.put('/api/auth/profile/', data)
+    updateProfile: (data) => api.put('/api/auth/profile/', data),
+    checkAuth: () => api.get('/api/auth/user/')
   },
   
   // 知识库相关
@@ -161,6 +162,49 @@ const apiService = {
     
     getTokenUsage: (params) => api.get('/api/token-usage/', { params }),
     getTokenUsageSummary: () => api.get('/api/token-usage/stats/', { params: { period: 'day', days: 30 } })
+  },
+  
+  // 添加提示词场景相关API
+  promptScenes: {
+    // 获取所有场景
+    getScenes: () => {
+      console.log('调用获取场景列表API'); // 添加日志
+      return api.get('/api/prompt-scenes/');
+    },
+    
+    // 获取单个场景详情
+    getScene: (id) => api.get(`/api/prompt-scenes/${id}/`),
+    
+    // 创建新场景
+    createScene: (data) => api.post('/api/prompt-scenes/', data),
+    
+    // 更新场景
+    updateScene: (id, data) => api.put(`/api/prompt-scenes/${id}/`, data),
+    
+    // 删除场景
+    deleteScene: (id) => api.delete(`/api/prompt-scenes/${id}/`),
+    
+    // 获取场景下的所有模板
+    getSceneTemplates: (id) => api.get(`/api/prompt-scenes/${id}/templates/`),
+    
+    // 更新场景排序
+    reorderScene: (id, order) => api.post(`/api/prompt-scenes/${id}/reorder/`, { order }),
+    
+    // 获取所有可用（已激活）的场景
+    getActiveScenes: () => api.get('/api/prompt-scenes/', { params: { is_active: true } })
+  },
+  
+  // 修改现有的 prompts 对象，添加场景相关参数
+  prompts: {
+    getTemplates: (params = {}) => {
+      return api.get('/api/prompt-templates/', { params });
+    },
+    getTemplate: (id) => api.get(`/api/prompt-templates/${id}/`),
+    createTemplate: (data) => api.post('/api/prompt-templates/', data),
+    updateTemplate: (id, data) => api.put(`/api/prompt-templates/${id}/`, data),
+    deleteTemplate: (id) => api.delete(`/api/prompt-templates/${id}/`),
+    getAvailableTemplates: (params = {}) => api.get('/api/prompt-templates/available/', { params }),
+    duplicateTemplate: (id) => api.post(`/api/prompt-templates/${id}/duplicate/`)
   },
 };
 

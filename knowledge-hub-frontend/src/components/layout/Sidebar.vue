@@ -88,7 +88,24 @@
             <span>模型配置</span>
           </template>
           
-          <!-- 模型配置子菜单 -->
+          <!-- 添加场景管理入口 -->
+          <el-menu-item 
+            index="/model-config/scenes" 
+            @click="navigateTo('/model-config/scenes')"
+          >
+            <el-icon><Collection /></el-icon>
+            <span>场景管理</span>
+          </el-menu-item>
+          
+          <el-menu-item 
+            index="/prompts" 
+            @click="navigateTo('/prompts')"
+          >
+            <el-icon><Document /></el-icon>
+            <span>提示词模板</span>
+          </el-menu-item>
+          
+          <!-- 其他现有菜单项保持不变 -->
           <el-menu-item 
             index="/model-config/providers" 
             @click="navigateTo('/model-config/providers')"
@@ -132,9 +149,11 @@
     Plus, 
     Delete,
     Setting,
-    Connection,  // 添加新图标
-    Monitor,     // 添加新图标
-    DataAnalysis // 添加新图标
+    Connection,
+    Monitor,
+    DataAnalysis,
+    Document,
+    Collection
   } from '@element-plus/icons-vue';
   
   const route = useRoute();
